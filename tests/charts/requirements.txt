@@ -1,0 +1,3 @@
+# Dependencies for tests/charts/plot_svf.py
+matplotlib>=3.5
+numpy>=1.21

@@ -19,6 +19,11 @@ endif()
 # Keep CMake project version in sync with CURRENT_VERSION defined above
 project(${PROJECT_NAME} VERSION ${CURRENT_VERSION})
 
+# Build the filter test harness / numeric tests (tests/). OFF by default so the
+# normal plugin build is unaffected; for a fast, JUCE-free test build prefer the
+# standalone path: cmake -S tests -B build-filter-test
+option(QUOTIENT_BUILD_TESTS "Build the Quotient filter test harness and numeric tests" OFF)
+
 # macOS deployment target + universal-binary architectures.
 # These MUST be set before any add_subdirectory() that consumes them. In
 # particular libs/kfr validates KFR_ARCH against CMAKE_OSX_ARCHITECTURES: if the
@@ -52,7 +57,10 @@ set(KFR_ENABLE_IO     OFF CACHE BOOL "" FORCE)
 set(KFR_ARCH "sse2" CACHE STRING "" FORCE)
 add_subdirectory(libs/kfr)
 
-#add_subdirectory(tests)
+if(QUOTIENT_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 # Project configuration
 set(CMAKE_CXX_STANDARD 23)
