@@ -138,11 +138,11 @@ elif [[ "$OS" == "Darwin" ]]; then
 elif [[ "$OS" == "Linux" ]]; then
   info "Linux detected — install the following with your package manager, then re-run:"
   if   command -v apt-get >/dev/null 2>&1; then
-    echo "    sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build libboost-all-dev python3 python3-dev doxygen pkg-config libasound2-dev libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev libcurl4-openssl-dev"
+    echo "    sudo apt-get update && sudo apt-get install -y build-essential cmake ninja-build libboost-all-dev python3 python3-dev doxygen pkg-config libasound2-dev ladspa-sdk libx11-dev libxext-dev libxrandr-dev libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev libgl1-mesa-dev libcurl4-openssl-dev"
   elif command -v dnf >/dev/null 2>&1; then
-    echo "    sudo dnf install -y gcc-c++ cmake ninja-build boost-devel python3 python3-devel doxygen pkgconf alsa-lib-devel libX11-devel libXext-devel libXrandr-devel libXinerama-devel libXcursor-devel freetype-devel fontconfig-devel mesa-libGL-devel libcurl-devel"
+    echo "    sudo dnf install -y gcc-c++ cmake ninja-build boost-devel python3 python3-devel doxygen pkgconf alsa-lib-devel ladspa-devel libX11-devel libXext-devel libXrandr-devel libXinerama-devel libXcursor-devel freetype-devel fontconfig-devel mesa-libGL-devel libcurl-devel"
   elif command -v pacman >/dev/null 2>&1; then
-    echo "    sudo pacman -S --needed base-devel cmake ninja boost python doxygen pkgconf alsa-lib libx11 libxext libxrandr libxinerama libxcursor freetype2 fontconfig mesa curl"
+    echo "    sudo pacman -S --needed base-devel cmake ninja boost python doxygen pkgconf alsa-lib ladspa libx11 libxext libxrandr libxinerama libxcursor freetype2 fontconfig mesa curl"
   else
     echo "    (cmake ninja boost python3 doxygen pkg-config + JUCE Linux dev headers)"
   fi
