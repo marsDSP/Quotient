@@ -23,10 +23,10 @@ Quotient builds with CMake and JUCE. All third-party code lives in `libs/` as gi
 ```sh
 git clone --recurse-submodules <repo-url> Quotient
 cd Quotient
-./setup.sh      # installs deps + initialises submodules (one-time)
-./build.sh      # configures and compiles (Debug by default)
+./scripts/bash/setup.sh      # installs deps + initialises submodules (one-time)
+./scripts/bash/build.sh      # configures and compiles (Debug by default)
 ```
-Already cloned without submodules? Just run `./setup.sh` — it will initialise them.
+Already cloned without submodules? Just run `./scripts/bash/setup.sh` — it will initialise them.
 
 ### Prerequisites
 `setup.sh` installs these for you on macOS via Homebrew:
@@ -37,10 +37,10 @@ Already cloned without submodules? Just run `./setup.sh` — it will initialise 
 - Doxygen (optional, for the `docs` target)
 
 ### build.sh options
-- `./build.sh --release` — optimised build
-- `./build.sh --target Quotient_VST3` — build a single format/target
-- `./build.sh --clean` — wipe the build directory and reconfigure
-- `./build.sh --help` — full option list
+- `./scripts/bash/build.sh --release` — optimised build
+- `./scripts/bash/build.sh --target Quotient_VST3` — build a single format/target
+- `./scripts/bash/build.sh --clean` — wipe the build directory and reconfigure
+- `./scripts/bash/build.sh --help` — full option list
 
 Built plugins are written to `build/Quotient_artefacts/<Config>/` as **Standalone**, **VST3**, and (on macOS) **AU**.
 

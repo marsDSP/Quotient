@@ -1,18 +1,6 @@
 #!/bin/bash
-#
-# copy_vst3.sh — POST_BUILD helper that copies the freshly-built VST3 bundle
+# copy.sh — POST_BUILD helper that copies the freshly-built VST3 bundle
 # into a local "test" folder for quick scanning by a DAW/host.
-#
-# CMake invokes this with the actual bundle path as $1:
-#     scripts/bash/copy_vst3.sh "$<TARGET_BUNDLE_DIR:Quotient_VST3>"
-# so the destination works regardless of where the repo was cloned, which
-# generator was used, or whether the build type is Debug/Release.
-#
-# It is intentionally NON-FATAL: a copy problem must never fail the build, so
-# every early-exit returns 0 with a warning instead of a hard error.
-
-# Bundle path provided by CMake; fall back to the legacy Debug location so the
-# script still works if run by hand without an argument.
 BUNDLE_PATH="$1"
 if [ -z "$BUNDLE_PATH" ]; then
     BUNDLE_PATH="$HOME/CLionProjects/Quotient/cmake-build-debug/Quotient_artefacts/Debug/VST3/Quotient.vst3"

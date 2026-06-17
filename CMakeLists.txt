@@ -19,6 +19,18 @@ endif()
 # Keep CMake project version in sync with CURRENT_VERSION defined above
 project(${PROJECT_NAME} VERSION ${CURRENT_VERSION})
 
+# macOS deployment target + universal-binary architectures.
+# These MUST be set before any add_subdirectory() that consumes them. In
+# particular libs/kfr validates KFR_ARCH against CMAKE_OSX_ARCHITECTURES: if the
+# arch list is still empty when kfr is added, it rejects the pinned sse2 arch on
+# Apple Silicon ("Incorrect architecture set by KFR_ARCH: sse2") and a fresh
+# configure fails.
+if(APPLE)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version" FORCE)
+    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Architectures" FORCE)
+    set(CMAKE_XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET[arch=arm64] "11.0" CACHE STRING "arm 64 minimum deployment target" FORCE)
+endif()
+
 add_subdirectory(libs/JUCE)
 add_subdirectory(libs/JUCE/extras/AudioPluginHost)
 # gcem's cmake_minimum_required(VERSION 3.1) is incompatible with modern CMake;
@@ -49,13 +61,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(Python3_FIND_VIRTUALENV STANDARD)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 message(STATUS "Found Python3: ${Python3_EXECUTABLE}")
-
-# macOS-specific settings
-if(APPLE)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "10.15" CACHE STRING "Minimum OS X deployment version" FORCE)
-    set(CMAKE_OSX_ARCHITECTURES "x86_64;arm64" CACHE STRING "Architectures" FORCE)
-    set(CMAKE_XCODE_ATTRIBUTE_MACOSX_DEPLOYMENT_TARGET[arch=arm64] "11.0" CACHE STRING "arm 64 minimum deployment target" FORCE)
-endif()
 
 # Disable all warnings on non-MSVC compilers
 if(NOT MSVC)
@@ -209,9 +214,9 @@ if(TARGET AudioPluginHost)
 endif()
 
 # Post-build script to copy VST3 bundle to Desktop/vst test
-if(TARGET ${PROJECT_NAME}_VST3)
+if(APPLE AND TARGET ${PROJECT_NAME}_VST3)
     add_custom_command(TARGET ${PROJECT_NAME}_VST3 POST_BUILD
-            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/bash/copy_vst3.sh" "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}_VST3>"
+            COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/scripts/bash/copy.sh" "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}_VST3>"
             COMMENT "Triggering post-build copy of VST3 to Desktop/vst test..."
             VERBATIM
     )
