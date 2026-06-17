@@ -1,0 +1,24 @@
+[submodule "libs/JUCE"]
+	path = libs/JUCE
+	url = https://github.com/marsDSP/JUCE.git
+[submodule "libs/Catch2"]
+	path = libs/Catch2
+	url = https://github.com/marsDSP/Catch2.git
+[submodule "libs/kfr"]
+	path = libs/kfr
+	url = https://github.com/marsDSP/kfr.git
+[submodule "libs/pluginval"]
+	path = libs/pluginval
+	url = https://github.com/marsDSP/pluginval.git
+[submodule "libs/gcem"]
+	path = libs/gcem
+	url = https://github.com/marsDSP/gcem.git
+[submodule "libs/tracy"]
+	path = libs/tracy
+	url = https://github.com/marsDSP/tracy.git
+[submodule "libs/simde"]
+	path = libs/simde
+	url = https://github.com/marsDSP/simde.git
+[submodule "libs/xsimd"]
+	path = libs/xsimd
+	url = https://github.com/marsDSP/xsimd.git

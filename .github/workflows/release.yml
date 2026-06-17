@@ -1,0 +1,234 @@
+# =============================================================================
+# Release — build distributable plugin packages from a version tag.
+#
+# Trigger:
+#   * Push a SemVer tag like `v0.1.0` or `v1.2.3` (with optional pre-release
+#     suffix, e.g. `v0.2.0-rc1`).
+#   * Or run the workflow manually and supply a version.
+#
+# Output:
+#   * Per-OS zip archives of the VST3, AU (macOS), and Standalone builds.
+#   * A draft GitHub Release with those zips attached, ready for the
+#     maintainer to add release notes and publish.
+#
+# Notes:
+#   * Release builds use BUILD_TYPE=Release and the same universal-binary
+#     CMake configuration as CI.
+#   * Code signing / notarisation is intentionally NOT wired in here — that
+#     requires Apple Developer credentials stored as secrets. The TODO at the
+#     bottom of this file is the integration point.
+# =============================================================================
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag to publish (e.g. v0.1.0).'
+        required: true
+        type: string
+
+permissions:
+  contents: write  # required to create the GitHub Release
+
+env:
+  PROJECT_NAME: Quotient
+  BUILD_TYPE: Release
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Resolve the version string once so every downstream job uses the same one.
+  # ---------------------------------------------------------------------------
+  resolve-version:
+    name: Resolve version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set.outputs.version }}
+    steps:
+      - id: set
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Releasing $VERSION"
+
+  # ---------------------------------------------------------------------------
+  # Build the plugin on every supported OS.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Build (${{ matrix.name }})
+    needs: resolve-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+          - name: Linux
+            os: ubuntu-22.04
+          - name: Windows
+            os: windows-2022
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Initialise submodules (with JUCE fallback)
+        run: |
+          set -e
+          git submodule sync --recursive || true
+          git submodule update --init --recursive || \
+            echo "::warning::Some submodules could not be initialised; will fall back where possible."
+          if [ ! -f libs/JUCE/CMakeLists.txt ]; then
+            rm -rf libs/JUCE
+            git clone --depth 1 https://github.com/juce-framework/JUCE.git libs/JUCE
+          fi
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja boost
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ninja-build cmake pkg-config \
+            libboost-dev \
+            libasound2-dev libjack-jackd2-dev \
+            libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev \
+            libgl1-mesa-dev libglu1-mesa-dev
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja --no-progress -y
+          choco install boost-msvc-14.3 --no-progress -y
+          echo "BOOST_ROOT=C:\local\boost_1_84_0" >> $GITHUB_ENV
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure CMake
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      # -----------------------------------------------------------------------
+      # Package each format into a single archive named by version + OS.
+      # -----------------------------------------------------------------------
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -e
+          ART_DIR="build/${PROJECT_NAME}_artefacts/${BUILD_TYPE}"
+          OUT_DIR="dist"
+          mkdir -p "$OUT_DIR"
+          # Use ditto on macOS to preserve bundle resource forks / signatures.
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$ART_DIR/VST3/${PROJECT_NAME}.vst3" \
+            "$OUT_DIR/${PROJECT_NAME}-${VERSION}-macOS-VST3.zip"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$ART_DIR/AU/${PROJECT_NAME}.component" \
+            "$OUT_DIR/${PROJECT_NAME}-${VERSION}-macOS-AU.zip"
+          if [ -d "$ART_DIR/Standalone/${PROJECT_NAME}.app" ]; then
+            ditto -c -k --sequesterRsrc --keepParent \
+              "$ART_DIR/Standalone/${PROJECT_NAME}.app" \
+              "$OUT_DIR/${PROJECT_NAME}-${VERSION}-macOS-Standalone.zip"
+          fi
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -e
+          ART_DIR="build/${PROJECT_NAME}_artefacts/${BUILD_TYPE}"
+          OUT_DIR="dist"
+          mkdir -p "$OUT_DIR"
+          ( cd "$ART_DIR/VST3" && zip -qry "$OLDPWD/$OUT_DIR/${PROJECT_NAME}-${VERSION}-Linux-VST3.zip" "${PROJECT_NAME}.vst3" )
+          if [ -f "$ART_DIR/Standalone/${PROJECT_NAME}" ]; then
+            ( cd "$ART_DIR/Standalone" && zip -qry "$OLDPWD/$OUT_DIR/${PROJECT_NAME}-${VERSION}-Linux-Standalone.zip" "${PROJECT_NAME}" )
+          fi
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        env:
+          VERSION: ${{ needs.resolve-version.outputs.version }}
+        run: |
+          set -e
+          ART_DIR="build/${PROJECT_NAME}_artefacts/${BUILD_TYPE}"
+          OUT_DIR="dist"
+          mkdir -p "$OUT_DIR"
+          7z a -tzip "$OUT_DIR/${PROJECT_NAME}-${VERSION}-Windows-VST3.zip" "$ART_DIR/VST3/${PROJECT_NAME}.vst3" > /dev/null
+          if [ -f "$ART_DIR/Standalone/${PROJECT_NAME}.exe" ]; then
+            7z a -tzip "$OUT_DIR/${PROJECT_NAME}-${VERSION}-Windows-Standalone.zip" "$ART_DIR/Standalone/${PROJECT_NAME}.exe" > /dev/null
+          fi
+
+      - name: Upload packaged archives
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.name }}-packages
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Publish a draft GitHub Release with all packaged archives attached.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: Publish GitHub Release
+    needs: [resolve-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: '*-packages'
+          merge-multiple: true
+
+      - name: Show artifacts
+        run: ls -la dist/
+
+      - name: Create GitHub Release (draft)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-version.outputs.version }}
+          name: ${{ env.PROJECT_NAME }} ${{ needs.resolve-version.outputs.version }}
+          draft: true
+          prerelease: ${{ contains(needs.resolve-version.outputs.version, '-') }}
+          generate_release_notes: true
+          files: dist/*.zip
+          fail_on_unmatched_files: true
+
+      # TODO(code-signing): Wire up Apple Developer ID + notarisation here
+      # (e.g. apple-actions/import-codesign-certs + notarytool) before public
+      # distribution of macOS builds.

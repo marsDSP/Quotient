@@ -1,0 +1,83 @@
+# =============================================================================
+# CodeQL — static security + correctness analysis for the C++ sources.
+#
+# Scans /source on every push to main, every PR, and a weekly schedule so
+# alerts surface even when the repo is quiet. Results land in the
+# "Security ▸ Code scanning" tab on GitHub.
+# =============================================================================
+
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Mondays at 06:13 UTC — off-peak, randomised minute to spread load.
+    - cron: '13 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['c-cpp']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Initialise submodules (with JUCE fallback)
+        run: |
+          set -e
+          git submodule update --init --recursive || true
+          if [ ! -f libs/JUCE/CMakeLists.txt ]; then
+            rm -rf libs/JUCE
+            git clone --depth 1 https://github.com/juce-framework/JUCE.git libs/JUCE
+          fi
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ninja-build cmake pkg-config \
+            libboost-dev \
+            libasound2-dev libjack-jackd2-dev \
+            libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev \
+            libgl1-mesa-dev libglu1-mesa-dev
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # `security-and-quality` adds correctness queries on top of the
+          # default `security-extended` set. Worth the extra runtime here.
+          queries: security-and-quality
+
+      - name: Build (CodeQL traces compilation)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+          cmake --build build --parallel
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: '/language:${{ matrix.language }}'

@@ -1,0 +1,57 @@
+# =============================================================================
+# Dependabot — automated dependency PRs.
+#
+# Covers:
+#   * GitHub Actions versions used across .github/workflows/*.
+#   * Git submodules under libs/ (JUCE, Catch2, kfr, pluginval, …).
+#
+# Dependabot opens a PR; CI must pass before it can merge. Adjust schedules /
+# reviewers below to match your workflow.
+# =============================================================================
+
+version: 2
+updates:
+  # ---------------------------------------------------------------------------
+  # GitHub Actions (workflow YAML)
+  # ---------------------------------------------------------------------------
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'ci'
+      include: scope
+    labels:
+      - dependencies
+      - ci
+    groups:
+      # Bundle minor/patch bumps so the dependency drawer stays tidy.
+      actions-minor:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # ---------------------------------------------------------------------------
+  # Git submodules under libs/
+  # ---------------------------------------------------------------------------
+  # Submodule bumps are higher-risk (JUCE in particular), so keep them
+  # monthly and grouped, and require explicit review.
+  - package-ecosystem: gitsubmodule
+    directory: /
+    schedule:
+      interval: monthly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'deps'
+      include: scope
+    labels:
+      - dependencies
+      - submodules

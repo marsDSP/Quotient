@@ -1,0 +1,232 @@
+# =============================================================================
+# CI — build, validate, and archive Quotient on every push and pull request.
+#
+# Targets:
+#   * macOS (Apple Silicon runner)    → universal binary VST3 + AU + Standalone
+#   * Linux (Ubuntu 22.04)            → VST3 + Standalone
+#   * Windows (Server 2022 / MSVC)    → VST3 + Standalone
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE.md'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel superseded runs of this workflow on the same branch/PR, but never
+# cancel an in-flight run on `main` (those produce the artifacts we want).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  PROJECT_NAME: Quotient
+  BUILD_TYPE: Release
+  # Pluginval strictness: 5 = default sanity, 10 = exhaustive. 8 is a good
+  # CI compromise: deep enough to catch real bugs, fast enough not to flake.
+  PLUGINVAL_STRICTNESS: 8
+  # Pin pluginval so a future upstream change can't silently break the CI.
+  PLUGINVAL_VERSION: v1.0.4
+
+jobs:
+  build:
+    name: Build & validate (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            shell: bash
+          - name: Linux
+            os: ubuntu-22.04
+            shell: bash
+          - name: Windows
+            os: windows-2022
+            shell: bash
+
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Source
+      # -----------------------------------------------------------------------
+      # `submodules: false` so we can apply the JUCE fallback below without
+      # actions/checkout failing the job when a private marsDSP fork is
+      # inaccessible to the CI runner.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Initialise submodules (with JUCE fallback)
+        run: |
+          set -e
+          git submodule sync --recursive || true
+          git submodule update --init --recursive || \
+            echo "::warning::Some submodules could not be initialised; will fall back where possible."
+
+          # JUCE is hard-required by add_subdirectory(libs/JUCE). If the
+          # marsDSP fork is unreachable, fall back to upstream (mirrors the
+          # behaviour of setup.sh / build.sh).
+          if [ ! -f libs/JUCE/CMakeLists.txt ]; then
+            echo "::warning::libs/JUCE empty after submodule init — cloning upstream JUCE."
+            rm -rf libs/JUCE
+            git clone --depth 1 https://github.com/juce-framework/JUCE.git libs/JUCE
+          fi
+
+      # -----------------------------------------------------------------------
+      # 2. Toolchain / dependencies
+      # -----------------------------------------------------------------------
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew update
+          brew install ninja boost
+          # CMake is preinstalled on macos-14; this is a no-op safety net.
+          brew install cmake || true
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential ninja-build cmake pkg-config \
+            libboost-dev \
+            libasound2-dev libjack-jackd2-dev \
+            libfreetype6-dev libfontconfig1-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev \
+            libgl1-mesa-dev libglu1-mesa-dev
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja --no-progress -y
+          # boost-msvc-14.3 ships the headers + import libs find_package(Boost) needs.
+          choco install boost-msvc-14.3 --no-progress -y
+          # Expose Boost to CMake on the next step.
+          echo "BOOST_ROOT=C:\local\boost_1_84_0" >> $GITHUB_ENV
+
+      - name: Set up MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # -----------------------------------------------------------------------
+      # 3. Compiler cache (ccache for clang/gcc, sccache implicit on Windows)
+      # -----------------------------------------------------------------------
+      - name: Setup ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ${{ matrix.os }}-${{ env.BUILD_TYPE }}
+          max-size: 1G
+          # On Windows the action wraps cl.exe via sccache automatically.
+          variant: ${{ runner.os == 'Windows' && 'sccache' || 'ccache' }}
+
+      # -----------------------------------------------------------------------
+      # 4. Configure + build
+      # -----------------------------------------------------------------------
+      - name: Configure CMake
+        env:
+          # CMAKE_POLICY_VERSION_MINIMUM keeps CMake ≥ 4.0 happy with vendored
+          # libraries that still declare cmake_minimum_required(VERSION < 3.5).
+          CMAKE_POLICY_VERSION_MINIMUM: '3.5'
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_C_COMPILER_LAUNCHER=${{ runner.os == 'Windows' && 'sccache' || 'ccache' }} \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=${{ runner.os == 'Windows' && 'sccache' || 'ccache' }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel
+
+      # -----------------------------------------------------------------------
+      # 5. Plugin validation (Tracktion pluginval)
+      # -----------------------------------------------------------------------
+      # Pluginval exercises parameter ranges, state save/restore, real-time
+      # safety, and threading behaviour. Strictness 8 is a good CI tradeoff.
+      - name: Download pluginval (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          curl -fSL "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_macOS.zip" -o pluginval.zip
+          unzip -q pluginval.zip
+          # pluginval.app/Contents/MacOS/pluginval is the actual binary.
+          echo "PLUGINVAL=$PWD/pluginval.app/Contents/MacOS/pluginval" >> "$GITHUB_ENV"
+
+      - name: Download pluginval (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          curl -fSL "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_Linux.zip" -o pluginval.zip
+          unzip -q pluginval.zip
+          chmod +x pluginval
+          echo "PLUGINVAL=$PWD/pluginval" >> "$GITHUB_ENV"
+
+      - name: Download pluginval (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          curl -fSL "https://github.com/Tracktion/pluginval/releases/download/${PLUGINVAL_VERSION}/pluginval_Windows.zip" -o pluginval.zip
+          7z x pluginval.zip -y > /dev/null
+          echo "PLUGINVAL=$PWD/pluginval.exe" >> "$GITHUB_ENV"
+
+      - name: Validate VST3
+        run: |
+          "$PLUGINVAL" \
+            --strictness-level "$PLUGINVAL_STRICTNESS" \
+            --validate-in-process \
+            --skip-gui-tests \
+            --validate "build/${PROJECT_NAME}_artefacts/${BUILD_TYPE}/VST3/${PROJECT_NAME}.vst3"
+
+      - name: Validate AU (macOS only)
+        if: runner.os == 'macOS'
+        run: |
+          "$PLUGINVAL" \
+            --strictness-level "$PLUGINVAL_STRICTNESS" \
+            --validate-in-process \
+            --skip-gui-tests \
+            --validate "build/${PROJECT_NAME}_artefacts/${BUILD_TYPE}/AU/${PROJECT_NAME}.component"
+
+      # -----------------------------------------------------------------------
+      # 6. Artifacts
+      # -----------------------------------------------------------------------
+      - name: Upload plugin artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ env.PROJECT_NAME }}-${{ matrix.name }}-${{ env.BUILD_TYPE }}
+          path: |
+            build/${{ env.PROJECT_NAME }}_artefacts/${{ env.BUILD_TYPE }}/VST3/**
+            build/${{ env.PROJECT_NAME }}_artefacts/${{ env.BUILD_TYPE }}/AU/**
+            build/${{ env.PROJECT_NAME }}_artefacts/${{ env.BUILD_TYPE }}/Standalone/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
+  # Aggregate gate so branch protection only needs a single required check.
+  # ---------------------------------------------------------------------------
+  required-checks:
+    name: CI required checks
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: always()
+    steps:
+      - name: Verify all matrix jobs succeeded
+        run: |
+          if [ "${{ needs.build.result }}" != "success" ]; then
+            echo "::error::One or more build matrix jobs failed (${{ needs.build.result }})."
+            exit 1
+          fi
