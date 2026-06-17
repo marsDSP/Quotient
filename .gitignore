@@ -2,6 +2,10 @@
 build/
 build-filter-test/
 
+# Generated SVF chart-data CSVs (PNG charts in tests/charts are kept)
+tests/charts/data/
+charts_data/
+
 # macOS
 .DS_Store
 
