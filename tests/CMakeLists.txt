@@ -32,3 +32,4 @@ include(Catch)
 
 add_subdirectory(numeric)
 add_subdirectory(harnesses)
+add_subdirectory(benchmarks)
