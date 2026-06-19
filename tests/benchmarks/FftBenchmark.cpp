@@ -99,9 +99,12 @@ TEST_CASE("FFT helpers match the baseline and round-trip", "[fft]")
         const auto baseF = baseline::fwd(in);
         REQUIRE(maxAbsDiff(optF, baseF) < 1e-9);          // forward matches old code
 
-        const auto optR = fft.inv(optF);
+        // inv() is unnormalized now: inv(fwd(x)) == N * x, so scale by 1/N.
+        auto optR = fft.inv(optF);
+        for (auto &v : optR)
+            v /= static_cast<double>(N);
         REQUIRE(maxAbsDiff(optR, in) < 1e-9);             // round-trip identity
-        REQUIRE(maxAbsDiff(optR, baseline::inv(baseF)) < 1e-9); // inverse matches old code
+        REQUIRE(maxAbsDiff(optR, baseline::inv(baseF)) < 1e-9); // matches old (normalized) inverse
     }
 }
 
