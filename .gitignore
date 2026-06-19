@@ -122,3 +122,4 @@ http-client.private.env.json
 # Doxygen generated documentation
 #docs/
 media/
+build-bench/
