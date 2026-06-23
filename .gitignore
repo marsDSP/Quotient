@@ -1,6 +1,7 @@
 # Build output directories
 build/
 build-filter-test/
+build-tests/
 
 # Generated SVF chart-data CSVs (PNG charts in tests/charts are kept)
 tests/charts/data/
