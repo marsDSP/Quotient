@@ -1,8 +1,5 @@
 #pragma once
 
-#ifndef QUOTIENT_FFT_H
-#define QUOTIENT_FFT_H
-
 #include <bit>
 #include <complex>
 #include <vector>
@@ -10,7 +7,18 @@
 #include <cassert>
 #include <numbers>
 
+#if !defined(QUOTIENT_FFT_DISABLE_XSIMD) && defined(__has_include) && __has_include(<xsimd/xsimd.hpp>)
+#  include <xsimd/xsimd.hpp>
+#  define QUOTIENT_FFT_XSIMD_INCLUDED_
+#endif
+
 namespace MarsDSP::MathOps {
+#ifdef QUOTIENT_FFT_XSIMD_INCLUDED_
+    inline constexpr bool haveXSIMD = true;
+#else
+    inline constexpr bool haveXSIMD = false;
+#endif
+
     namespace detail {
         template <bool conjugateSecond, typename V>
         inline std::complex<V> complexMul(const std::complex<V> &a, const std::complex<V> &b)
@@ -137,7 +145,8 @@ namespace MarsDSP::MathOps {
                     radix = radixFactors[--highFactorIdx];
                     inStride = inStrideHigh;
                     inStrideHigh *= radix;
-                    outStride = (outStrideHigh /= radix);
+                    outStrideHigh /= radix;
+                    outStride = outStrideHigh;
                 }
                 const std::size_t prevCount = reorderTable.size();
                 for (auto i {1uz}; i < radix; ++i)
@@ -355,4 +364,3 @@ namespace MarsDSP::MathOps {
     // CTAD
     RealFFT(std::size_t) -> RealFFT<>;
 }
-#endif
