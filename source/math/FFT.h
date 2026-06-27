@@ -92,7 +92,7 @@ namespace MarsDSP::MathOps {
         std::vector<ReorderEntry> reorderTable;
         std::vector<Stage> stages;
 
-        static constexpr double twoPi = 2 * std::numbers::pi_v<double>;
+        static constexpr double twoPI = 2 * std::numbers::pi_v<double>;
 
         void buildPlan()
         {
@@ -151,10 +151,7 @@ namespace MarsDSP::MathOps {
             }
         }
 
-        void appendStages(std::size_t factorIndex,
-                          const std::size_t offset,
-                          const std::size_t length,
-                          const std::size_t repeatCount)
+        void appendStages(std::size_t factorIndex, const std::size_t offset, const std::size_t length, const std::size_t repeatCount)
         {
             if (factorIndex >= radixFactors.size()) return;
             std::size_t radix = radixFactors[factorIndex];
@@ -184,11 +181,8 @@ namespace MarsDSP::MathOps {
                 for (auto i {0uz}; i < subLength; ++i)
                     for (auto r {0uz}; r < radix; ++r)
                     {
-                        const double phase = twoPi * static_cast<double>(i) *
-                                                     static_cast<double>(r) /
-                                                     static_cast<double>(length);
-                        twiddleTable.push_back(Complex(static_cast<ST>(std::cos(phase)),
-                                                       static_cast<ST>(-std::sin(phase))));
+                        const double phase = twoPI * static_cast<double>(i) * static_cast<double>(r) / static_cast<double>(length);
+                        twiddleTable.push_back(Complex(static_cast<ST>(std::cos(phase)), static_cast<ST>(-std::sin(phase))));
                     }
             appendStages(factorIndex + 1, offset, subLength, repeatCount * radix);
             stages.push_back(stage);
@@ -197,8 +191,7 @@ namespace MarsDSP::MathOps {
         template <bool inverse>
         void execute(const Complex *in, Complex *out) const
         {
-            for (const ReorderEntry &entry : reorderTable)
-                out[entry.outputIndex] = in[entry.inputIndex];
+            for (const ReorderEntry &entry : reorderTable) out[entry.outputIndex] = in[entry.inputIndex];
             for (const Stage &stage : stages)
                 switch (stage.kind)
                 {
@@ -214,15 +207,15 @@ namespace MarsDSP::MathOps {
         static std::vector<Complex> transform(std::vector<Complex> x)
         {
             const std::size_t N = x.size();
-            if (N == 1) return x;                       // 1-point DFT is identity
-            if (N == 2)                                 // radix-2 butterfly base case
+            if (N == 1) return x;
+            if (N == 2)
             {
                 const Complex s0 = x[0];
                 const Complex s1 = x[1];
-                return {s0 + s1, s0 - s1};              // W_2^0 = 1, W_2^1 = -1
+                return {s0 + s1, s0 - s1};
             }
 
-            const std::size_t quarter = N / 4;          // sub-transform length
+            const std::size_t quarter = N / 4;
             std::vector<Complex> sub0(quarter);
             std::vector<Complex> sub1(quarter);
             std::vector<Complex> sub2(quarter);
@@ -234,15 +227,15 @@ namespace MarsDSP::MathOps {
                 sub2[k] = x[4 * k + 2];
                 sub3[k] = x[4 * k + 3];
             }
-            const std::vector<Complex> dft0 = transform<inverse>(sub0); // DFT of n%4==0
-            const std::vector<Complex> dft1 = transform<inverse>(sub1); // DFT of n%4==1
-            const std::vector<Complex> dft2 = transform<inverse>(sub2); // DFT of n%4==2
-            const std::vector<Complex> dft3 = transform<inverse>(sub3); // DFT of n%4==3
+            const std::vector<Complex> dft0 = transform<inverse>(sub0);
+            const std::vector<Complex> dft1 = transform<inverse>(sub1);
+            const std::vector<Complex> dft2 = transform<inverse>(sub2);
+            const std::vector<Complex> dft3 = transform<inverse>(sub3);
 
             std::vector<Complex> result(N);
             for (auto k {0uz}; k < quarter; ++k)
             {
-                const double angle = -twoPi * static_cast<double>(k) / static_cast<double>(N);
+                const double angle = -twoPI * static_cast<double>(k) / static_cast<double>(N);
                 const Complex tw1 = std::polar(1.0, angle);
                 const Complex tw2 = detail::complexMul<false>(tw1, tw1);
                 const Complex tw3 = detail::complexMul<false>(tw2, tw1);
@@ -260,13 +253,106 @@ namespace MarsDSP::MathOps {
                 const Complex sum13 = term1 + term3;
                 const Complex diff13 = term1 - term3;
 
-                result[k]               = sum02 + sum13;
-                result[k + quarter]     = detail::complexAddI<!inverse>(diff02, diff13);
+                result[k] = sum02 + sum13;
+                result[k + quarter] = detail::complexAddI<!inverse>(diff02, diff13);
                 result[k + 2 * quarter] = sum02 - sum13;
                 result[k + 3 * quarter] = detail::complexAddI<inverse>(diff02, diff13);
             }
             return result;
         }
     };
+
+    template <typename ST = double>
+    class RealFFT {
+    public:
+        using Complex = std::complex<ST>;
+        RealFFT() = default;
+        explicit RealFFT(const std::size_t n)
+        {
+            setSize(n);
+        }
+
+        [[nodiscard]] std::size_t size() const
+        {
+            return complexEngine.size() * 2;
+        }
+
+        std::size_t setSize(const std::size_t n)
+        {
+            assert(n % 2 == 0 && "RealFFT length must be even!");
+            const std::size_t half = n / 2;
+            packed.resize(half);
+            spectrum.resize(half);
+
+            const std::size_t binCount = half / 2 + 1;
+            twiddles.resize(binCount);
+            for (auto k {0uz}; k < binCount; ++k)
+            {
+                const double theta = -twoPI * static_cast<double>(k) / static_cast<double>(n);
+                twiddles[k] = Complex(static_cast<ST>(std::cos(theta)), static_cast<ST>(std::sin(theta)));
+            }
+            complexEngine.setSize(half);
+            return n;
+        }
+
+        void forward(const ST *in, Complex *out)
+        {
+            const std::size_t half = complexEngine.size();
+
+            for (auto k {0uz}; k < half; ++k)
+                packed[k] = Complex(in[2 * k], in[2 * k + 1]);
+
+            complexEngine.fwd(packed.data(), spectrum.data());
+
+            const ST re = spectrum[0].real();
+            const ST im = spectrum[0].imag();
+            out[0] = Complex(re + im, re - im);
+
+            for (auto k {1uz}; k <= half / 2; ++k)
+            {
+                const std::size_t mirror = half - k;
+                const Complex lo = spectrum[k];
+                const Complex hi = std::conj(spectrum[mirror]);
+                const Complex evenBin = (lo + hi) * static_cast<ST>(0.5);
+                const Complex halfDiff = (lo - hi) * static_cast<ST>(0.5);
+                const Complex oddBin = Complex(halfDiff.imag(), -halfDiff.real());
+                const Complex rotated = detail::complexMul<false>(twiddles[k], oddBin);
+                out[k] = evenBin + rotated;
+                out[mirror] = std::conj(evenBin - rotated);
+            }
+        }
+
+        void inverse(const Complex *in, ST *out)
+        {
+            const std::size_t half = complexEngine.size();
+            spectrum[0] = Complex(in[0].real() + in[0].imag(), in[0].real() - in[0].imag());
+            for (auto k {1uz}; k <= half / 2; ++k)
+            {
+                const std::size_t mirror = half - k;
+                const Complex sum = in[k] + std::conj(in[mirror]);
+                const Complex diff = in[k] - std::conj(in[mirror]);
+                const Complex twoOdd = detail::complexMul<true>(diff, twiddles[k]);
+                const Complex twoIOdd = Complex(-twoOdd.imag(), twoOdd.real());
+                spectrum[k] = sum + twoIOdd;
+                spectrum[mirror] = std::conj(sum - twoIOdd);
+            }
+            complexEngine.inverse(spectrum.data(), packed.data());
+            for (auto k {0uz}; k < half; ++k)
+            {
+                out[2*k] = packed[k].real();
+                out[2*k+1] = packed[k].imag();
+            }
+        }
+
+    private:
+        static constexpr double twoPI = 2.0 * std::numbers::pi_v<double>;
+        FFT<ST> complexEngine;
+        std::vector<Complex> packed;
+        std::vector<Complex> spectrum;
+        std::vector<Complex> twiddles;
+    };
+
+    // CTAD
+    RealFFT(std::size_t) -> RealFFT<>;
 }
 #endif
