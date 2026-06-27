@@ -1,4 +1,4 @@
-# Filter test harness executable
+# ── Filter test harness ──────────────────────────────────────────────────────
 add_executable(quotient_filter_tests
         FilterTestHarness.cpp)
 
@@ -28,4 +28,32 @@ if(Python3_Interpreter_FOUND)
             VERBATIM)
 else()
     message(STATUS "Python3 interpreter not found; 'charts' target unavailable.")
+endif()
+
+# ── FFT test harness ─────────────────────────────────────────────────────────
+add_executable(quotient_fft_tests
+        FftTestHarness.cpp)
+
+target_link_libraries(quotient_fft_tests PRIVATE
+        fft_numeric
+        Catch2::Catch2)
+
+target_compile_features(quotient_fft_tests PRIVATE cxx_std_23)
+
+target_compile_definitions(quotient_fft_tests PRIVATE
+        QUOTIENT_DEFAULT_CHART_DIR="${QUOTIENT_CHART_DATA_DIR}")
+
+catch_discover_tests(quotient_fft_tests)
+
+if(Python3_Interpreter_FOUND)
+    add_custom_target(fft_charts
+            COMMAND quotient_fft_tests --export-charts --chart-dir "${QUOTIENT_CHART_DATA_DIR}"
+            COMMAND "${Python3_EXECUTABLE}" "${QUOTIENT_ROOT}/tests/charts/plot_fft.py"
+                    --data "${QUOTIENT_CHART_DATA_DIR}"
+                    --out  "${QUOTIENT_ROOT}/tests/charts"
+            DEPENDS quotient_fft_tests
+            WORKING_DIRECTORY "${QUOTIENT_ROOT}/tests/charts"
+            COMMENT "Running FFT tests, exporting chart data, and rendering matplotlib charts"
+            USES_TERMINAL
+            VERBATIM)
 endif()

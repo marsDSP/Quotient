@@ -229,17 +229,76 @@ jobs:
           retention-days: 14
 
   # ---------------------------------------------------------------------------
+  # FFT numeric tests + chart generation.
+  #
+  # Runs the Catch2 FFT harness (failing the job if any assertion fails) and
+  # renders the matplotlib charts, which are uploaded as artifacts rather than
+  # committed to the repo. Single Linux runner is sufficient: the output is
+  # deterministic and JUCE-free, so only Catch2 is needed.
+  # ---------------------------------------------------------------------------
+  fft-tests:
+    name: FFT tests & charts
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      # Catch2 is a private marsDSP fork; fall back to upstream (pinned to the
+      # vendored 3.14.0) when the runner cannot reach the fork.
+      - name: Initialise Catch2 (with upstream fallback)
+        run: |
+          git submodule update --init libs/Catch2 || \
+            echo "::warning::Catch2 submodule init failed; falling back to upstream."
+          if [ ! -f libs/Catch2/CMakeLists.txt ]; then
+            echo "::warning::libs/Catch2 empty — cloning upstream Catch2 v3.14.0."
+            rm -rf libs/Catch2
+            git clone --depth 1 --branch v3.14.0 https://github.com/catchorg/Catch2.git libs/Catch2
+          fi
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential ninja-build cmake
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r tests/charts/requirements.txt
+
+      - name: Configure
+        run: cmake -S tests -B build-tests -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build FFT test harness
+        run: cmake --build build-tests --target quotient_fft_tests --parallel
+
+      # The harness runs the Catch2 tests first; a non-zero exit (failed tests)
+      # fails this step and the job, so chart CSVs are only written on success.
+      - name: Run FFT tests + export chart data
+        run: ./build-tests/harnesses/quotient_fft_tests --export-charts --chart-dir tests/charts/data
+
+      - name: Render charts (matplotlib)
+        run: python3 tests/charts/plot_fft.py --data tests/charts/data --out tests/charts
+
+      - name: Upload FFT charts
+        uses: actions/upload-artifact@v4
+        with:
+          name: fft-charts
+          path: tests/charts/fft_*.png
+          if-no-files-found: error
+          retention-days: 14
+
+  # ---------------------------------------------------------------------------
   # Aggregate gate so branch protection only needs a single required check.
   # ---------------------------------------------------------------------------
   required-checks:
     name: CI required checks
     runs-on: ubuntu-latest
-    needs: [build]
+    needs: [build, fft-tests]
     if: always()
     steps:
-      - name: Verify all matrix jobs succeeded
+      - name: Verify all required jobs succeeded
         run: |
-          if [ "${{ needs.build.result }}" != "success" ]; then
-            echo "::error::One or more build matrix jobs failed (${{ needs.build.result }})."
+          if [ "${{ needs.build.result }}" != "success" ] || [ "${{ needs.fft-tests.result }}" != "success" ]; then
+            echo "::error::A required job failed (build=${{ needs.build.result }}, fft-tests=${{ needs.fft-tests.result }})."
             exit 1
           fi

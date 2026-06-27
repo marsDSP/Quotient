@@ -11,3 +11,15 @@ target_include_directories(svf_numeric PUBLIC
 
 target_compile_features(svf_numeric PUBLIC cxx_std_23)
 target_link_libraries(svf_numeric PUBLIC Catch2::Catch2)
+
+# FFT numeric correctness tests + chart-data exporter
+add_library(fft_numeric OBJECT
+        FftNumericTests.cpp
+        FftChartData.h)
+
+target_include_directories(fft_numeric PUBLIC
+        "${CMAKE_CURRENT_SOURCE_DIR}"             # FftChartData.h
+        "${QUOTIENT_ROOT}/source")                # math/FFT.h
+
+target_compile_features(fft_numeric PUBLIC cxx_std_23)
+target_link_libraries(fft_numeric PUBLIC Catch2::Catch2)
