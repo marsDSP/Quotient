@@ -83,6 +83,11 @@ int main(int argc, char *argv[])
             std::cerr << "error: failed to write chart data to " << dir << '\n';
             return 3;
         }
+        if (!quotient_fft_charts::exportSimdChartData(dir))
+        {
+            std::cerr << "error: failed to write SIMD chart data to " << dir << '\n';
+            return 3;
+        }
         std::cout << "chart data written.\n";
     }
     return testResult;
