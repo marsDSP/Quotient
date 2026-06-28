@@ -234,7 +234,8 @@ jobs:
   # Runs the Catch2 FFT harness (failing the job if any assertion fails) and
   # renders the matplotlib charts, which are uploaded as artifacts rather than
   # committed to the repo. Single Linux runner is sufficient: the output is
-  # deterministic and JUCE-free, so only Catch2 is needed.
+  # deterministic and JUCE-free, needing only Catch2 and the header-only xsimd
+  # (so the SIMD kernels are actually compiled and exercised).
   # ---------------------------------------------------------------------------
   fft-tests:
     name: FFT tests & charts
@@ -246,16 +247,22 @@ jobs:
           submodules: false
           fetch-depth: 1
 
-      # Catch2 is a private marsDSP fork; fall back to upstream (pinned to the
-      # vendored 3.14.0) when the runner cannot reach the fork.
-      - name: Initialise Catch2 (with upstream fallback)
+      # Catch2 and xsimd are private forks; fall back to upstream (pinned to the
+      # vendored versions) when the runner cannot reach the forks. xsimd is
+      # header-only and required for the SIMD path (haveXSIMD == true).
+      - name: Initialise submodules (with upstream fallback)
         run: |
-          git submodule update --init libs/Catch2 || \
-            echo "::warning::Catch2 submodule init failed; falling back to upstream."
+          git submodule update --init libs/Catch2 libs/xsimd || \
+            echo "::warning::submodule init failed; falling back to upstream where needed."
           if [ ! -f libs/Catch2/CMakeLists.txt ]; then
             echo "::warning::libs/Catch2 empty — cloning upstream Catch2 v3.14.0."
             rm -rf libs/Catch2
             git clone --depth 1 --branch v3.14.0 https://github.com/catchorg/Catch2.git libs/Catch2
+          fi
+          if [ ! -f libs/xsimd/include/xsimd/xsimd.hpp ]; then
+            echo "::warning::libs/xsimd empty — cloning upstream xsimd 14.2.0."
+            rm -rf libs/xsimd
+            git clone --depth 1 --branch 14.2.0 https://github.com/xtensor-stack/xsimd.git libs/xsimd
           fi
 
       - name: Install dependencies
@@ -271,6 +278,8 @@ jobs:
       - name: Build FFT test harness
         run: cmake --build build-tests --target quotient_fft_tests --parallel
 
+      # Fail loudly if the SIMD path was not compiled in (xsimd missing): the
+      # harness asserts haveXSIMD, so a scalar-only build would fail the run.
       # The harness runs the Catch2 tests first; a non-zero exit (failed tests)
       # fails this step and the job, so chart CSVs are only written on success.
       - name: Run FFT tests + export chart data

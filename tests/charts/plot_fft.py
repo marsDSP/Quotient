@@ -149,6 +149,108 @@ def plot_parseval(path: str, out: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Plot: SIMD accuracy vs N  (SoA SIMD compared to DFT and to the scalar FFT)
+# ---------------------------------------------------------------------------
+
+def plot_simd_accuracy(path: str, out: str) -> str:
+    header, cols = read_csv(path)
+    N = cols["N"]
+    vs_dft = cols["simd_vs_dft"]
+    vs_scalar = cols["simd_vs_scalar"]
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.loglog(N, vs_dft, "o-", color="tab:blue", lw=1.6, label="SIMD vs reference DFT")
+    ax.loglog(N, vs_scalar, "s-", color="tab:orange", lw=1.6, label="SIMD vs scalar FFT")
+
+    eps = np.finfo(float).eps
+    ax.loglog(N, N * np.log2(N) * eps, "--", color="gray", lw=1.2,
+              label=r"$N \cdot \log_2 N \cdot \varepsilon$  (ref)")
+
+    ax.set_xlabel("Transform size N")
+    ax.set_ylabel("Max absolute error")
+    ax.set_title("SoA/SIMD FFT accuracy vs N")
+    ax.legend(fontsize=9)
+    ax.grid(True, which="both", ls=":", alpha=0.5)
+    ax.set_xticks(N)
+    ax.set_xticklabels([str(int(n)) for n in N], rotation=45, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Plot: phase coherence — phase & magnitude error of a swept tone vs bin
+# ---------------------------------------------------------------------------
+
+def plot_phase_coherence(path: str, out: str) -> str:
+    header, cols = read_csv(path)
+    bin_idx = cols["bin"]
+    phase_err = cols["phase_err_deg"]
+    mag_err = cols["mag_err_db"]
+
+    fig, (ax, axm) = plt.subplots(
+        2, 1, figsize=(9, 6), sharex=True, gridspec_kw={"height_ratios": [2, 1]}
+    )
+
+    ax.plot(bin_idx, phase_err, color="tab:purple", lw=1.2)
+    ax.axhline(0.0, color="k", lw=0.6)
+    ax.set_ylabel("Phase error (deg)")
+    ax.set_title("SoA/SIMD phase coherence — swept tone (no detuning ⇒ flat at 0)")
+    ax.grid(True, ls=":", alpha=0.5)
+    # Symmetric, tight y-limits so residual noise is visible but framed near zero.
+    pmax = max(1e-9, float(np.max(np.abs(phase_err))))
+    ax.set_ylim(-1.5 * pmax, 1.5 * pmax)
+
+    axm.plot(bin_idx, mag_err, color="tab:green", lw=1.2)
+    axm.axhline(0.0, color="k", lw=0.6)
+    axm.set_ylabel("Magnitude error (dB)")
+    axm.set_xlabel("Tone bin")
+    axm.grid(True, ls=":", alpha=0.5)
+
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Plot: throughput — SoA SIMD vs scalar (Msamples/s) + speedup, vs N
+# ---------------------------------------------------------------------------
+
+def plot_throughput(path: str, out: str) -> str:
+    header, cols = read_csv(path)
+    N = cols["N"]
+    simd = cols["simd_msps"]
+    scalar = cols["scalar_msps"]
+    speedup = cols["speedup"]
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.semilogx(N, simd, "o-", color="tab:blue", lw=1.6, base=2, label="SoA SIMD")
+    ax.semilogx(N, scalar, "s-", color="tab:orange", lw=1.6, base=2, label="scalar recursive")
+    ax.set_xlabel("Transform size N")
+    ax.set_ylabel("Throughput (Msamples/s)")
+    ax.set_title("FFT throughput: SoA SIMD vs scalar")
+    ax.grid(True, which="both", ls=":", alpha=0.5)
+    ax.set_xticks(N)
+    ax.set_xticklabels([str(int(n)) for n in N], rotation=45, fontsize=8)
+    ax.legend(fontsize=9, loc="upper left")
+
+    # Speedup on a twin axis.
+    axt = ax.twinx()
+    axt.plot(N, speedup, "^--", color="tab:red", lw=1.2, label="speedup (x)")
+    axt.axhline(1.0, color="tab:red", lw=0.6, alpha=0.4)
+    axt.set_ylabel("Speedup (x)", color="tab:red")
+    axt.tick_params(axis="y", labelcolor="tab:red")
+    axt.legend(fontsize=9, loc="upper right")
+
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Figure registry
 # ---------------------------------------------------------------------------
 
@@ -156,6 +258,9 @@ FIGURES = [
     ("fft_spectrum.csv",  plot_spectrum,  "fft_spectrum.png"),
     ("fft_accuracy.csv",  plot_accuracy,  "fft_accuracy.png"),
     ("fft_parseval.csv",  plot_parseval,  "fft_parseval.png"),
+    ("fft_simd_accuracy.csv",   plot_simd_accuracy,   "fft_simd_accuracy.png"),
+    ("fft_phase_coherence.csv", plot_phase_coherence, "fft_phase_coherence.png"),
+    ("fft_throughput.csv",      plot_throughput,      "fft_throughput.png"),
 ]
 
 

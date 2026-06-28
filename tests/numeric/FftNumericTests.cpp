@@ -4,102 +4,20 @@
 // ============================================================================
 #include <catch2/catch_test_macros.hpp>
 
+#include "FftTestSupport.h"
 #include "FftChartData.h"
-#include "math/FFT.h"
 
-#include <algorithm>
 #include <cmath>
 #include <complex>
+#include <cstddef>
 #include <filesystem>
-#include <fstream>
-#include <iomanip>
-#include <numbers>
-#include <random>
+#include <string>
 #include <vector>
 
-namespace
-{
-    using Complex = std::complex<double>;
-    using FFTd    = MarsDSP::MathOps::FFT<double>;
-
-    constexpr double twoPI = 2.0 * std::numbers::pi_v<double>;
-
-    // -------------------------------------------------------------------------
-    //  Reference O(N²) DFT — used only for small N in accuracy checks
-    // -------------------------------------------------------------------------
-    std::vector<Complex> dftRef(const std::vector<Complex> &x)
-    {
-        const std::size_t N = x.size();
-        std::vector<Complex> X(N);
-        for (std::size_t k = 0; k < N; ++k)
-            for (std::size_t n = 0; n < N; ++n)
-            {
-                const double phase =
-                    -twoPI * static_cast<double>(k * n) / static_cast<double>(N);
-                X[k] += x[n] * std::polar(1.0, phase);
-            }
-        return X;
-    }
-
-    double maxAbsDiff(const std::vector<Complex> &a, const std::vector<Complex> &b)
-    {
-        double m = 0.0;
-        for (std::size_t i = 0; i < a.size(); ++i)
-            m = std::max(m, std::abs(a[i] - b[i]));
-        return m;
-    }
-
-    std::vector<Complex> makeRandom(std::size_t N, std::uint64_t seed = 0xDEADBEEFULL)
-    {
-        std::mt19937_64 rng(seed);
-        std::uniform_real_distribution<double> dist(-1.0, 1.0);
-        std::vector<Complex> v(N);
-        for (auto &z : v) z = Complex{dist(rng), dist(rng)};
-        return v;
-    }
-
-    // Pure complex exponential e^{j2π k0 n/N}: all energy concentrates at bin k0
-    std::vector<Complex> makeComplexTone(std::size_t N, std::size_t k0)
-    {
-        std::vector<Complex> x(N);
-        for (std::size_t n = 0; n < N; ++n)
-        {
-            const double phase =
-                twoPI * static_cast<double>(k0 * n) / static_cast<double>(N);
-            x[n] = Complex{std::cos(phase), std::sin(phase)};
-        }
-        return x;
-    }
-
-    // Real cosine: cos(2π k0 n/N)
-    std::vector<Complex> makeCosineTone(std::size_t N, std::size_t k0)
-    {
-        std::vector<Complex> x(N);
-        for (std::size_t n = 0; n < N; ++n)
-        {
-            const double phase =
-                twoPI * static_cast<double>(k0 * n) / static_cast<double>(N);
-            x[n] = Complex{std::cos(phase), 0.0};
-        }
-        return x;
-    }
-
-    bool writeCsv(const std::filesystem::path        &path,
-                  const std::vector<std::string>      &header,
-                  const std::vector<std::vector<double>> &cols)
-    {
-        std::ofstream os(path);
-        if (!os) return false;
-        for (std::size_t c = 0; c < header.size(); ++c)
-            os << header[c] << (c + 1 < header.size() ? "," : "\n");
-        const std::size_t rows = cols.empty() ? 0uz : cols.front().size();
-        os << std::setprecision(10);
-        for (std::size_t r = 0; r < rows; ++r)
-            for (std::size_t c = 0; c < cols.size(); ++c)
-                os << cols[c][r] << (c + 1 < cols.size() ? "," : "\n");
-        return static_cast<bool>(os);
-    }
-} // namespace
+// Shared helpers (dftRef, makeRandom, makeComplexTone, makeCosineTone,
+// maxAbsDiff, writeCsv, Complex) live in FftTestSupport.h.
+using namespace ffttest;
+using FFTd = ScalarFFT;
 
 
 // =============================================================================
