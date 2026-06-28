@@ -1,5 +1,7 @@
 # Quotient
 
+This is a work in progress!
+
 A dynamic EQ built on numerically stable, trapezoidally-integrated state-variable filters and selectable models of classic gain-reduction behavior.
 
 ## Overview
@@ -13,7 +15,7 @@ Quotient pairs per-band dynamic processing with a choice of phase responses:
 
 ## Status
 
-Quotient is primarily a vehicle for rigorously exercising applied mathematics. Derivation, discretization, and real-time implementation. Secondarily, it's the first of several plugins I plan to release.
+Quotient is primarily a vehicle for rigorously exercising applied mathematics.
 
 ## Build
 
@@ -26,7 +28,7 @@ cd Quotient
 ./scripts/bash/setup.sh      # installs deps + initialises submodules (one-time)
 ./scripts/bash/build.sh      # configures and compiles (Debug by default)
 ```
-Already cloned without submodules? Just run `./scripts/bash/setup.sh` — it will initialise them.
+Run `./scripts/bash/setup.sh` if you've already cloned without submodules.
 
 ### Prerequisites
 `setup.sh` installs these for you on macOS via Homebrew:
@@ -43,10 +45,6 @@ Already cloned without submodules? Just run `./scripts/bash/setup.sh` — it wil
 - `./scripts/bash/build.sh --help` — full option list
 
 Built plugins are written to `build/Quotient_artefacts/<Config>/` as **Standalone**, **VST3**, and (on macOS) **AU**.
-
-## License
-
-> _TODO_
 
 ## Feedback
 
