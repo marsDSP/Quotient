@@ -129,3 +129,4 @@ http-client.private.env.json
 #docs/
 media/
 build-bench/
+.idea/
